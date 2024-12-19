@@ -1,70 +1,101 @@
-//SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0 <0.9.0;
 
-// Useful for debugging. Remove when deploying to a live network.
 import "hardhat/console.sol";
 
-// Use openzeppelin to inherit battle-tested implementations (ERC20, ERC721, etc)
-// import "@openzeppelin/contracts/access/Ownable.sol";
-
 /**
- * A smart contract that allows changing a state variable of the contract and tracking the changes
- * It also allows the owner to withdraw the Ether in the contract
- * @author BuidlGuidl
+ * A smart contract that allows users to create, pay, and retrieve invoices.
  */
 contract YourContract {
     // State Variables
     address public immutable owner;
-    string public greeting = "Building Unstoppable Apps!!!";
-    bool public premium = false;
-    uint256 public totalCounter = 0;
-    mapping(address => uint) public userGreetingCounter;
+    uint256 public totalInvoices;
 
-    // Events: a way to emit log statements from smart contract that can be listened to by external parties
-    event GreetingChange(address indexed greetingSetter, string newGreeting, bool premium, uint256 value);
-
-    // Constructor: Called once on contract deployment
-    // Check packages/hardhat/deploy/00_deploy_your_contract.ts
-    constructor(address _owner) {
-        owner = _owner;
+    struct Invoice {
+        address payer;
+        uint256 amount;
+        string description;
+        bool status; // false = unpaid, true = paid
     }
 
-    // Modifier: used to define a set of rules that must be met before or after a function is executed
-    // Check the withdraw() function
+    mapping(uint256 => Invoice) public invoices; // invoiceId => Invoice
+    mapping(address => uint256[]) public payerInvoices; // payer address => list of invoiceIds
+
+    // Events
+    event InvoiceCreated(address indexed payer, uint256 indexed invoiceId, uint256 amount, string description);
+    event InvoicePaid(address indexed payer, uint256 indexed invoiceId, uint256 amount);
+
+    // Constructor
+    constructor() {
+        owner = msg.sender;
+    }
+
+    // Modifier to ensure only the owner can execute specific functions
     modifier isOwner() {
-        // msg.sender: predefined variable that represents address of the account that called the current function
         require(msg.sender == owner, "Not the Owner");
         _;
     }
 
     /**
-     * Function that allows anyone to change the state variable "greeting" of the contract and increase the counters
-     *
-     * @param _newGreeting (string memory) - new greeting to save on the contract
+     * Create a new invoice.
+     * @param _payer The address of the payer who needs to pay the invoice.
+     * @param _amount The amount to be paid in wei.
+     * @param _description The description of the invoice.
      */
-    function setGreeting(string memory _newGreeting) public payable {
-        // Print data to the hardhat chain console. Remove when deploying to a live network.
-        console.log("Setting new greeting '%s' from %s", _newGreeting, msg.sender);
+    function createInvoice(address _payer, uint256 _amount, string memory _description) public {
+        require(_payer != address(0), "Payer address cannot be zero");
+        require(_amount > 0, "Amount must be greater than zero");
 
-        // Change state variables
-        greeting = _newGreeting;
-        totalCounter += 1;
-        userGreetingCounter[msg.sender] += 1;
+        totalInvoices++;
+        invoices[totalInvoices] = Invoice({
+            payer: _payer,
+            amount: _amount,
+            description: _description,
+            status: false
+        });
+        payerInvoices[_payer].push(totalInvoices);
 
-        // msg.value: built-in global variable that represents the amount of ether sent with the transaction
-        if (msg.value > 0) {
-            premium = true;
-        } else {
-            premium = false;
-        }
-
-        // emit: keyword used to trigger an event
-        emit GreetingChange(msg.sender, _newGreeting, msg.value > 0, msg.value);
+        emit InvoiceCreated(_payer, totalInvoices, _amount, _description);
     }
 
     /**
-     * Function that allows the owner to withdraw all the Ether in the contract
-     * The function can only be called by the owner of the contract as defined by the isOwner modifier
+     * Pay an existing invoice.
+     * @param _invoiceId The ID of the invoice to be paid.
+     */
+    function payInvoice(uint256 _invoiceId) public payable {
+        require(_invoiceId > 0 && _invoiceId <= totalInvoices, "Invalid invoice ID");
+        Invoice storage invoice = invoices[_invoiceId];
+        require(msg.sender == invoice.payer, "Only the payer can pay this invoice");
+        require(!invoice.status, "Invoice is already paid");
+        require(msg.value >= invoice.amount, "Insufficient payment amount");
+
+        invoice.status = true;
+
+        emit InvoicePaid(msg.sender, _invoiceId, msg.value);
+    }
+
+    /**
+     * Get the details of a specific invoice.
+     * @param _invoiceId The ID of the invoice to be retrieved.
+     * @return Invoice details (payer, amount, description, status).
+     */
+    function getInvoice(uint256 _invoiceId) public view returns (address, uint256, string memory, bool) {
+        require(_invoiceId > 0 && _invoiceId <= totalInvoices, "Invalid invoice ID");
+        Invoice memory invoice = invoices[_invoiceId];
+        return (invoice.payer, invoice.amount, invoice.description, invoice.status);
+    }
+
+    /**
+     * Get all invoices created for a specific payer.
+     * @param _payer The address of the payer.
+     * @return List of invoice IDs associated with the payer.
+     */
+    function getInvoicesByPayer(address _payer) public view returns (uint256[] memory) {
+        return payerInvoices[_payer];
+    }
+
+    /**
+     * Withdraw Ether from the contract. Only the owner can withdraw.
      */
     function withdraw() public isOwner {
         (bool success, ) = owner.call{ value: address(this).balance }("");
@@ -72,7 +103,7 @@ contract YourContract {
     }
 
     /**
-     * Function that allows the contract to receive ETH
+     * Allow the contract to receive Ether.
      */
     receive() external payable {}
 }

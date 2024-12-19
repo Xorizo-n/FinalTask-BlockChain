@@ -1,71 +1,168 @@
 "use client";
 
-import Link from "next/link";
-import type { NextPage } from "next";
-import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { Address } from "~~/components/scaffold-eth";
+import { useState } from "react";
+import { parseEther } from "viem";
+import { useScaffoldWriteContract, useScaffoldReadContract } from "~~/hooks/scaffold-eth";
 
-const Home: NextPage = () => {
-  const { address: connectedAddress } = useAccount();
+const InvoiceApp = () => {
+  const [payerAddress, setPayerAddress] = useState("");
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+
+  // Хуки для записи в контракт
+  const { writeContractAsync: createInvoice, isPending: isCreating } = useScaffoldWriteContract("YourContract");
+  const { writeContractAsync: payInvoice, isPending: isPaying } = useScaffoldWriteContract("YourContract");
+
+  // Хук для чтения инвойса
+  const { data: invoiceData } = useScaffoldReadContract({
+    contractName: "YourContract",
+    functionName: "getInvoice",
+    args: [BigInt(invoiceId) || 0n], // Преобразование invoiceId в BigInt
+  });
+
+  /**
+   * Создать инвойс
+   */
+  const handleCreateInvoice = async () => {
+    try {
+      await createInvoice(
+        {
+          functionName: "createInvoice",
+          args: [payerAddress, parseEther(amount), description],
+        },
+        {
+          onBlockConfirmation: (txnReceipt) => {
+            console.log("📦 Invoice created, blockHash:", txnReceipt.blockHash);
+            alert("Invoice created successfully!");
+          },
+        }
+      );
+    } catch (error) {
+      console.error("Error creating invoice:", error);
+      alert("Failed to create invoice.");
+    }
+  };
+
+  /**
+   * Оплатить инвойс
+   */
+  const handlePayInvoice = async () => {
+    try {
+      await payInvoice(
+        {
+          functionName: "payInvoice",
+          args: [BigInt(invoiceId) || 0n], // Преобразование invoiceId в BigInt
+          value: parseEther(paymentAmount),
+        },
+        {
+          onBlockConfirmation: (txnReceipt) => {
+            console.log("📦 Payment confirmed, blockHash:", txnReceipt.blockHash);
+            alert("Invoice paid successfully!");
+          },
+        }
+      );
+    } catch (error) {
+      console.error("Error paying invoice:", error);
+      alert("Failed to pay invoice.");
+    }
+  };
 
   return (
-    <>
-      <div className="flex items-center flex-col flex-grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col sm:flex-row">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address address={connectedAddress} />
-          </div>
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
-          </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
-          </p>
+    <div className="flex flex-col items-center justify-center min-h-screen py-10 bg-base-300">
+      <h1 className="text-4xl font-bold mb-6">Invoice Management</h1>
+
+      <div className="w-full max-w-lg bg-base-100 p-6 rounded-xl shadow-md space-y-6">
+        {/* Форма для создания инвойса */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold">Create Invoice</h2>
+          <input
+            type="text"
+            placeholder="Payer Address"
+            className="input input-bordered w-full"
+            value={payerAddress}
+            onChange={(e) => setPayerAddress(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Amount (ETH)"
+            className="input input-bordered w-full"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Description"
+            className="input input-bordered w-full"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+          <button
+            className="btn btn-primary w-full"
+            onClick={handleCreateInvoice}
+            disabled={isCreating}
+          >
+            {isCreating ? <span className="loading loading-spinner loading-sm"></span> : "Create Invoice"}
+          </button>
         </div>
 
-        <div className="flex-grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col sm:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
+        {/* Форма для получения данных по инвойсу */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold">Get Invoice</h2>
+          <input
+            type="number"
+            placeholder="Invoice ID"
+            className="input input-bordered w-full"
+            value={invoiceId}
+            onChange={(e) => setInvoiceId(e.target.value)}
+          />
+          {invoiceData && (
+            <div className="mt-4 p-4 bg-base-200 rounded-md">
               <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
+                <strong>Payer:</strong> {invoiceData[0]}
+              </p>
+              <p>
+                <strong>Amount:</strong> {Number(invoiceData[1]) / 1e18} ETH
+              </p>
+              <p>
+                <strong>Description:</strong> {invoiceData[2]}
+              </p>
+              <p>
+                <strong>Status:</strong> {invoiceData[3] ? "Paid" : "Unpaid"}
               </p>
             </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-          </div>
+          )}
+        </div>
+
+        {/* Форма для оплаты инвойса */}
+        <div className="space-y-4">
+          <h2 className="text-2xl font-bold">Pay Invoice</h2>
+          <input
+            type="number"
+            placeholder="Invoice ID"
+            className="input input-bordered w-full"
+            value={invoiceId}
+            onChange={(e) => setInvoiceId(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Payment Amount (ETH)"
+            className="input input-bordered w-full"
+            value={paymentAmount}
+            onChange={(e) => setPaymentAmount(e.target.value)}
+          />
+          <button
+            className="btn btn-accent w-full"
+            onClick={handlePayInvoice}
+            disabled={isPaying}
+          >
+            {isPaying ? <span className="loading loading-spinner loading-sm"></span> : "Pay Invoice"}
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
-export default Home;
+export default InvoiceApp;

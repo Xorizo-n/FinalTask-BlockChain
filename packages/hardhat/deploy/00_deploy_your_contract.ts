@@ -3,9 +3,9 @@ import { DeployFunction } from "hardhat-deploy/types";
 import { Contract } from "ethers";
 
 /**
- * Deploys a contract named "YourContract" using the deployer account and
- * constructor arguments set to the deployer address
- *
+ * Deploys the "YourContract" contract using the deployer account and 
+ * constructor arguments set to the deployer address.
+ * 
  * @param hre HardhatRuntimeEnvironment object.
  */
 const deployYourContract: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
@@ -16,25 +16,30 @@ const deployYourContract: DeployFunction = async function (hre: HardhatRuntimeEn
     should have sufficient balance to pay for the gas fees for contract creation.
 
     You can generate a random account with `yarn generate` or `yarn account:import` to import your
-    existing PK which will fill DEPLOYER_PRIVATE_KEY_ENCRYPTED in the .env file (then used on hardhat.config.ts)
+    existing PK which will fill DEPLOYER_PRIVATE_KEY_ENCRYPTED in the .env file (then used on hardhat.config.ts).
     You can run the `yarn account` command to check your balance in every network.
   */
   const { deployer } = await hre.getNamedAccounts();
   const { deploy } = hre.deployments;
 
-  await deploy("YourContract", {
+  // Deploy the contract with the constructor arguments
+  const deploymentResult = await deploy("YourContract", {
     from: deployer,
-    // Contract constructor arguments
-    args: [deployer],
+    args: [], // No constructor arguments are needed for the new contract
     log: true,
-    // autoMine: can be passed to the deploy function to make the deployment process faster on local networks by
-    // automatically mining the contract deployment transaction. There is no effect on live networks.
-    autoMine: true,
+    autoMine: true, // Automatically mine the contract deployment transaction on local networks
   });
 
-  // Get the deployed contract to interact with it after deploying.
-  const yourContract = await hre.ethers.getContract<Contract>("YourContract", deployer);
-  console.log("👋 Initial greeting:", await yourContract.greeting());
+  // Get the deployed contract instance
+  const yourContract: Contract = await hre.ethers.getContract("YourContract", deployer);
+
+  console.log("Contract Deployed!");
+  console.log("Contract Address:", deploymentResult.address);
+  console.log("Transaction Hash:", deploymentResult.transactionHash);
+
+  // Example interaction: Retrieve total invoices count
+  const totalInvoices = await yourContract.totalInvoices();
+  console.log("Total Invoices at deployment:", totalInvoices.toString());
 };
 
 export default deployYourContract;
